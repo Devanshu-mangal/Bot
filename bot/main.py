@@ -65,8 +65,8 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Vera AI Challenge Bot", version="3.0.0", lifespan=lifespan)
 
 # ── Config ──────────────────────────────────────────
-TEAM_NAME = os.getenv("TEAM_NAME", "Vera Champions")
-CONTACT_EMAIL = os.getenv("CONTACT_EMAIL", "team@example.com")
+TEAM_NAME = os.getenv("TEAM_NAME", "Mangal Champions")
+CONTACT_EMAIL = os.getenv("CONTACT_EMAIL", "devanshumangal.ace@gmail.com")
 MAX_ACTIONS_PER_TICK = 20
 TICK_TIMEOUT_SECONDS = 25  # leave 5s buffer vs 30s judge limit
 
