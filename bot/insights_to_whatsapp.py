@@ -4,7 +4,7 @@ Steps 7-10 implemented!
 """
 import re
 from typing import Dict, Any
-from category_intelligence import CategoryIntelligence
+from bot.category_intelligence import CategoryIntelligence
 
 
 def compose_whatsapp_message(

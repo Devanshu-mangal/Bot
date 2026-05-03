@@ -4,7 +4,12 @@ test_system.py — Tests the LIVE pipeline (signal_engine + composer + rationale
 NOT the legacy pipeline. Run from the bot/ directory.
 """
 import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Ensure project root (two levels up) is on sys.path so `import bot...` works
+HERE = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 from signal_engine import collect_signals, rank_signals, pick_winner, Signal
 from composer import compose_message

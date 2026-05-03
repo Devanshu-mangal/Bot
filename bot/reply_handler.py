@@ -17,7 +17,7 @@ import re
 import logging
 from typing import Any, Dict, Optional, Tuple
 
-import context_store
+from bot import context_store
 
 logger = logging.getLogger("vera.reply_handler")
 

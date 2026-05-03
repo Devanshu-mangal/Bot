@@ -3,10 +3,10 @@ Unified Composer: Single compose() function that brings everything together!
 Combines: product_intelligence, decision_intelligence, customer_personalization, category_intelligence, and message composition.
 """
 from typing import Dict, Any, Optional, List, Tuple
-from product_intelligence import extract_insights
-from customer_personalization import generate_personalization
-from category_intelligence import CategoryIntelligence
-from insights_to_whatsapp import compose_whatsapp_message
+from bot.product_intelligence import extract_insights
+from bot.customer_personalization import generate_personalization
+from bot.category_intelligence import CategoryIntelligence
+from bot.insights_to_whatsapp import compose_whatsapp_message
 
 
 def compose(

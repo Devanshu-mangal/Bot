@@ -27,11 +27,11 @@ from pydantic import BaseModel
 load_dotenv(dotenv_path=Path(__file__).with_name(".env"))
 
 # ── Local modules ───────────────────────────────────
-import context_store
-from signal_engine import collect_signals, rank_signals, pick_winner
-from composer import compose_message
-from rationale_engine import build_rationale
-from reply_handler import handle_reply
+from bot import context_store
+from bot.signal_engine import collect_signals, rank_signals, pick_winner
+from bot.composer import compose_message
+from bot.rationale_engine import build_rationale
+from bot.reply_handler import handle_reply
 
 # ── Logging ─────────────────────────────────────────
 logging.basicConfig(
@@ -187,7 +187,7 @@ async def push_context(body: ContextRequest):
             context_store.update_merchant_memory(body.context_id, mem)
     elif body.scope == "category":
         # New category version = new digest items → force recompose for all merchants
-        import context_store as cs
+        from bot import context_store as cs
         for merchant_id in list(cs._merchant_memory.keys()):
             mem = cs.get_merchant_memory(merchant_id)
             if mem.get("last_body_hash"):
@@ -204,7 +204,7 @@ async def push_context(body: ContextRequest):
 @app.post("/v1/teardown")
 async def teardown():
     """Wipes all state."""
-    import context_store
+    from bot import context_store
     context_store._clear_all()
     return {
         "wiped": True,

@@ -1,6 +1,6 @@
 from typing import Dict, Any, Optional, List, Tuple
-from signal_collector import Signal
-from context_extractor import ContextExtractor
+from bot.signal_collector import Signal
+from bot.context_extractor import ContextExtractor
 
 class DecisionEngine:
     @staticmethod

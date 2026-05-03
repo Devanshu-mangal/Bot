@@ -1,6 +1,6 @@
 from typing import Dict, Any, Optional
-from category_intelligence import CategoryIntelligence
-from context_extractor import ContextExtractor
+from bot.category_intelligence import CategoryIntelligence
+from bot.context_extractor import ContextExtractor
 import json
 
 class MessageComposer:

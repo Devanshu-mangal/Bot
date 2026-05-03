@@ -3,7 +3,7 @@ Message Blueprint Engine: Deterministic blueprint builder + message composer.
 No LLM dependency for research_digest, performance_drop, recall triggers!
 """
 from typing import Dict, Any, Optional
-from product_intelligence import extract_insights
+from bot.product_intelligence import extract_insights
 
 
 def create_message_blueprint(

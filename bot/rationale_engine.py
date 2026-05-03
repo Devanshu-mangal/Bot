@@ -10,7 +10,7 @@ Format: Signal evaluation → Winner selection → Proof identification → Deci
 """
 from __future__ import annotations
 from typing import List, Optional, Tuple
-from signal_engine import Signal
+from bot.signal_engine import Signal
 
 
 def build_rationale(

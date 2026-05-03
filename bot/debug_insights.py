@@ -1,6 +1,6 @@
 import json
-from product_intelligence import extract_insights
-from insights_to_whatsapp import compose_whatsapp_message
+from bot.product_intelligence import extract_insights
+from bot.insights_to_whatsapp import compose_whatsapp_message
 
 
 def main():
@@ -30,13 +30,13 @@ def main():
     print(json.dumps(insights, indent=2))
 
     print("\nDEBUG: Top insights selected:")
-    from insights_to_whatsapp import _select_top_insights
+    from bot.insights_to_whatsapp import _select_top_insights
     top_insights = _select_top_insights(insights, 2)
     for i, ins in enumerate(top_insights):
         print(f"{i+1}. Type: {ins['type']}, Content: '{ins['content']}'")
 
     print("\nDEBUG: Blended insights:")
-    from insights_to_whatsapp import _blend_insights_into_sentences
+    from bot.insights_to_whatsapp import _blend_insights_into_sentences
     blended = _blend_insights_into_sentences(top_insights, "dentists")
     print(f"Blended: '{blended}'")
     print(f"Length: {len(blended)}, Has spaces at end: '{blended[-5:]}'")

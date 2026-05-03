@@ -1,7 +1,13 @@
 import json
 import sys
 import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Ensure project root (two levels up) is on sys.path so `import bot...` works
+HERE = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
 from product_intelligence import extract_insights
 from insights_to_whatsapp import compose_whatsapp_message
 

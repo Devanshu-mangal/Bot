@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from dotenv import load_dotenv
-from signal_engine import Signal
+from bot.signal_engine import Signal
 
 # Load .env so composer works when imported standalone (tests, scripts)
 load_dotenv(dotenv_path=Path(__file__).parent / ".env")

@@ -2,7 +2,7 @@
 Decision Intelligence Engine: selects the BEST signal using insights from product_intelligence.
 """
 from typing import Dict, Any, List, Tuple, Optional
-from product_intelligence import extract_insights
+from bot.product_intelligence import extract_insights
 
 
 def select_best_signal(
