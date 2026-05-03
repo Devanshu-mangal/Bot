@@ -18,9 +18,10 @@ from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
 load_dotenv(dotenv_path=Path(__file__).with_name(".env"))
@@ -39,8 +40,29 @@ logging.basicConfig(
 )
 logger = logging.getLogger("vera.main")
 
+
+# ── Lifespan (startup / shutdown) ─────────────────────
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # ── Startup ──────────────────────────────────────
+    logger.info("Vera AI Challenge Bot v3.0.0 starting up")
+    if os.getenv("GROQ_API_KEY") or os.getenv("GROK_API_KEY"):
+        llm = f"Groq ({os.getenv('GROQ_MODEL', 'llama-3.3-70b-versatile')}) with template fallback"
+    elif os.getenv("ANTHROPIC_API_KEY"):
+        llm = "Anthropic Claude"
+    elif os.getenv("OPENAI_API_KEY"):
+        llm = "OpenAI GPT-4o-mini"
+    else:
+        llm = "Template-only (no LLM key set)"
+    logger.info(f"LLM provider: {llm}")
+    logger.info("LLM triggers: active_planning_intent, curious_ask_due, review_theme_emerged, ipl_match_today, seasonal_perf_dip, competitor_opened, dormant_with_vera")
+    logger.info("Template triggers: all others (research_digest, search_spike, recall_due, etc.)")
+    yield
+    # ── Shutdown ─────────────────────────────────────
+    logger.info("Vera AI Challenge Bot shutting down")
+
 # ── App ──────────────────────────────────────────────
-app = FastAPI(title="Vera AI Challenge Bot", version="3.0.0")
+app = FastAPI(title="Vera AI Challenge Bot", version="3.0.0", lifespan=lifespan)
 
 # ── Config ──────────────────────────────────────────
 TEAM_NAME = os.getenv("TEAM_NAME", "Vera Champions")
@@ -324,10 +346,21 @@ async def _process_trigger(trigger_id: str, now: str) -> Optional[Dict]:
         # Unfilled variable guard: check if any {var} remains
         import re
         if re.search(r'\{[a-z_]+\}', body):
-            logger.warning(f"Unfilled variables found in body: {body} — using fallback")
-            # Fallback: create a simple generic message
+            logger.warning(f"Unfilled variables found in body — using fallback")
             owner = merchant.get("identity", {}).get("owner_first_name", "")
             body = f"Hi {owner}! Quick check — want to review what's working for your business? Reply YES."
+
+        # Hallucination number guard: detect LLM-invented numbers not in signal data
+        try:
+            import json
+            trigger_data_str = json.dumps(trigger) + json.dumps(merchant.get("performance", {}))
+            payload_numbers = set(re.findall(r'\b(\d{2,})\b', trigger_data_str))
+            body_numbers = set(re.findall(r'\b(\d{2,})\b', body))
+            invented = body_numbers - payload_numbers - {str(i) for i in range(10, 30)}
+            if len(invented) > 2:
+                logger.warning(f"Possible hallucination: invented numbers {invented} not in payload — keeping body but flagging")
+        except Exception:
+            pass
 
         # ── 12. Build rationale ───────────────────────────
         rationale = build_rationale(
@@ -386,7 +419,7 @@ async def _process_trigger(trigger_id: str, now: str) -> Optional[Dict]:
             "trigger_id": trigger_id,
             "template_name": template_name,
             "template_params": template_params,
-            "body": body,
+            "body": body.encode("utf-8").decode("utf-8"),
             "cta": cta,
             "suppression_key": trigger_suppression_key or sig_supp_key,
             "rationale": rationale,
@@ -431,16 +464,7 @@ def _build_template_fields(
     return ("vera_generic_v1", [owner, kind, d.get("offer_title", "")])
 
 
-# ═══════════════════════════════════════════════════
-# STARTUP
-# ═══════════════════════════════════════════════════
 
-@app.on_event("startup")
-async def startup():
-    logger.info("Vera AI Challenge Bot v3.0.0 starting up")
-    llm = "Anthropic" if os.getenv("ANTHROPIC_API_KEY") else \
-          "OpenAI" if os.getenv("OPENAI_API_KEY") else "Template-only (no LLM key set)"
-    logger.info(f"LLM provider: {llm}")
 
 
 if __name__ == "__main__":

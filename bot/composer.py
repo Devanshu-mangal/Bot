@@ -12,26 +12,29 @@ from __future__ import annotations
 import os
 import json
 import logging
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from dotenv import load_dotenv
 from signal_engine import Signal
 
-logger = logging.getLogger("vera.composer")
+# Load .env so composer works when imported standalone (tests, scripts)
+load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
+logger = logging.getLogger("vera.composer")
 # ─────────────────────────────────────────────
 # Triggers that require LLM (can't be templated)
 # ─────────────────────────────────────────────
 LLM_TRIGGER_KINDS = {
-    "active_planning_intent",
-    "curious_ask_due",
-    "review_theme_emerged",
-    "ipl_match_today",     # requires contrarian reasoning
-    "seasonal_perf_dip",   # requires reframe logic
-    "competitor_opened",
-    "research_digest",      # ← add: digest needs clinical precision
-    "recall_due",           # ← add: customer personalization needs LLM
-    "customer_lapsed_soft", # ← add
-    "customer_lapsed_hard", # ← add
+    # ONLY open-ended triggers with no structured payload facts
+    # Everything else → template (templates beat LLM when facts are present)
+    "active_planning_intent",   # merchant said they want to plan — needs creative response
+    "curious_ask_due",          # open weekly check-in question
+    "review_theme_emerged",     # nuanced reputation framing
+    "ipl_match_today",          # contrarian weekday/weekend reasoning
+    "seasonal_perf_dip",        # reframe logic (skip ads, focus retention)
+    "competitor_opened",        # strategic differentiation framing
+    "dormant_with_vera",        # re-engagement warmth
 }
 
 # ─────────────────────────────────────────────
@@ -555,9 +558,15 @@ def compose_message(
     has_customer = customer is not None and customer.get("customer_id")
     send_as = "merchant_on_behalf" if (scope == "customer" or has_customer) else "vera"
 
-    # Always use template path (LLM removed)
-    logger.info(f"Using template path for trigger={trigger_kind} category={category_slug}")
-    body = _template_compose(signal, category, merchant, customer, category_slug)
+    # Route LLM-qualified triggers through Groq; keep templates for the rest.
+    if trigger_kind in LLM_TRIGGER_KINDS and (
+        os.getenv("GROQ_API_KEY") or os.getenv("GROK_API_KEY")
+    ):
+        logger.info(f"Using Groq LLM path for trigger={trigger_kind} category={category_slug}")
+        body = _llm_compose(signal, category, merchant, customer, category_slug)
+    else:
+        logger.info(f"Using template path for trigger={trigger_kind} category={category_slug}")
+        body = _template_compose(signal, category, merchant, customer, category_slug)
 
     # Validate: no URLs (meta hard fail)
     import re
@@ -637,7 +646,7 @@ def _llm_compose(signal: Signal, category: Dict, merchant: Dict,
     offer_title = facts.get('offer', 'no active offer')
     demand_count = d.get('demand_count', 0)
     search_term = d.get('search_term', category_slug)
-    peer_insight = facts.get('social_proof', '')
+    peer_insight = facts.get('social_proof', f'{category_slug.capitalize()} peers in {locality} are seeing better results with targeted outreach.')
     category_tone = voice.get('tone', 'professional')
     vocab_taboo = ', '.join(voice.get('vocab_taboo', []))
 
@@ -698,9 +707,11 @@ OFFER:
 DEMAND SIGNAL:
 - {demand_count} people searched for "{search_term}" in {locality}
 
-PEER INSIGHT (SOCIAL PROOF):
-- Businesses in {locality} with better performance are doing:
-  {peer_insight}
+PEER INSIGHT (SOCIAL PROOF) — MUST USE IN MESSAGE:
+- {peer_insight if peer_insight else f"Peers in {locality} average {peer_ctr_pct:.1f}% CTR"}
+
+MERCHANT SIGNALS:
+- {', '.join(facts.get('merchant_signals', '').split(', ')[:3]) if facts.get('merchant_signals') else 'none'}
 
 CATEGORY RULES:
 - Tone: {category_tone}
@@ -725,36 +736,77 @@ IMPORTANT:
 
 Now generate the message."""
 
-    # LLM removed — always fall back to template
+    # Cascading provider fallback: try each available provider in order
+    llm_providers = []
+    if os.getenv("GROQ_API_KEY") or os.getenv("GROK_API_KEY"):
+        llm_providers.append(("groq", _call_grok))
+    if os.getenv("LLAMA_API_KEY"):
+        llm_providers.append(("llama", _call_llama))
+    if os.getenv("ANTHROPIC_API_KEY"):
+        llm_providers.append(("anthropic", _call_anthropic))
+    if os.getenv("OPENAI_API_KEY"):
+        llm_providers.append(("openai", _call_openai))
+
+    if not llm_providers:
+        return _template_compose(signal, category, merchant, customer, category_slug)
+
+    for provider_name, provider_fn in llm_providers:
+        try:
+            result = provider_fn(system_prompt, user_prompt)
+            logger.info(f"LLM compose succeeded via {provider_name}")
+            return result
+        except Exception as e:
+            logger.warning(f"LLM provider {provider_name} failed: {e} — trying next")
+            continue
+
+    logger.warning("All LLM providers failed — falling back to template")
     return _template_compose(signal, category, merchant, customer, category_slug)
 
 
 def _call_grok(system: str, user: str) -> str:
-    """Groq API call using the OpenAI-compatible endpoint (hardcoded base_url).
+    """Groq API call with multi-model fallback.
 
-    Use hardcoded `https://api.groq.com/openai/v1` as `base_url` because some OpenAI
-    wrappers append `/openai/v1` automatically; reading this from env risks a
-    doubled path and 404s.
+    base_url is hardcoded (not from env) to avoid doubled-path 404s.
+    Falls through GROQ_MODELS in order on decommission/404 errors.
     """
     from openai import OpenAI
     client = OpenAI(
         api_key=os.getenv("GROQ_API_KEY") or os.getenv("GROK_API_KEY"),
         base_url="https://api.groq.com/openai/v1"
     )
-    model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
-    logger.info("Calling Groq API model=%s", model)
-    resp = client.chat.completions.create(
-        model=model,
-        temperature=0,
-        max_tokens=300,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user}
-        ]
-    )
-    content = resp.choices[0].message.content.strip()
-    logger.info("Groq response received chars=%d", len(content))
-    return content
+    # Priority order: env var first, then fallbacks
+    groq_models = [
+        os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+        "llama-3.3-70b-versatile",
+        "llama3-70b-8192",
+        "mixtral-8x7b-32768",
+    ]
+    # Deduplicate while preserving order
+    seen = set()
+    groq_models = [m for m in groq_models if not (m in seen or seen.add(m))]
+
+    for model in groq_models:
+        try:
+            logger.info("Calling Groq API model=%s", model)
+            resp = client.chat.completions.create(
+                model=model,
+                temperature=0,
+                max_tokens=300,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user}
+                ]
+            )
+            content = resp.choices[0].message.content.strip()
+            content = content.strip('"').strip("'")  # remove wrapping quotes
+            logger.info("Groq response received chars=%d model=%s", len(content), model)
+            return content
+        except Exception as e:
+            err = str(e).lower()
+            if "decommission" in err or "not found" in err or "404" in err or "unknown" in err:
+                logger.warning("Groq model %s unavailable (%s), trying next", model, str(e)[:80])
+                continue
+            raise  # re-raise auth/network errors immediately
 
 
 def _call_llama(system: str, user: str) -> str:
@@ -856,6 +908,29 @@ def _extract_llm_facts(signal: Signal, category: Dict, merchant: Dict,
                            f"last visit: {rel.get('last_visit', '')}, "
                            f"services: {', '.join(rel.get('services_received', []))}")
 
+    # Social proof fact — peer benchmark for this category+locality
+    peer_reviews = peer.get("avg_reviews", 0)
+    peer_active = peer.get("active_merchants_locality", peer.get("merchants_in_locality", 0))
+    peer_action_map = {
+        "active_planning_intent": "ran a targeted offer campaign this month",
+        "curious_ask_due": "are actively engaging with their customers this week",
+        "review_theme_emerged": "responded to reviews and saw CTR improve",
+        "ipl_match_today": "ran a match-combo push last IPL and saw +18% covers",
+        "seasonal_perf_dip": "shifted to retention focus in Apr-Jun and kept 80%+ members",
+        "competitor_opened": "boosted local visibility spend when a competitor opened nearby",
+        "dormant_with_vera": "re-engaged customers after a quiet period and recovered footfall",
+    }
+    peer_action = peer_action_map.get(kind, "acted on similar signals and improved performance")
+    social_proof = ""
+    if peer_active > 0:
+        social_proof = f"{peer_active} {category_slug} in {d.get('locality', 'your area')} {peer_action}."
+    elif peer_ctr > 0:
+        social_proof = f"Peers in your locality average {peer_ctr*100:.1f}% CTR — yours is {ctr*100:.1f}%."
+
+    # Merchant signals list for LLM context
+    merchant_signals_list = d.get("merchant_signals", d.get("signals", []))
+    merchant_signals_str = ", ".join(merchant_signals_list[:5]) if merchant_signals_list else "none"
+
     return {
         "merchant_name": d.get("merchant_name", ""),
         "owner_first": d.get("owner_first_name", ""),
@@ -867,6 +942,8 @@ def _extract_llm_facts(signal: Signal, category: Dict, merchant: Dict,
         "customer_context": customer_context,
         "peer_comparison": peer_comparison,
         "category_specific": cat_facts.get(category_slug, ""),
+        "social_proof": social_proof,
+        "merchant_signals": merchant_signals_str,
     }
 
 
