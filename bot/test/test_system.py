@@ -11,9 +11,9 @@ PROJECT_ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from signal_engine import collect_signals, rank_signals, pick_winner, Signal
-from composer import compose_message
-from rationale_engine import build_rationale
+from bot.signal_engine import collect_signals, rank_signals, pick_winner, Signal
+from bot.composer import compose_message
+from bot.rationale_engine import build_rationale
 
 DENTIST_MERCHANT = {
     "merchant_id": "m_001_drmeera_dentist_delhi",

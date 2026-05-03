@@ -8,7 +8,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from unified_composer import compose
+from bot.unified_composer import compose
 
 
 def main():
